@@ -39,6 +39,15 @@ pushd "`/usr/bin/dirname \"$0\"`" > /dev/null; this_script_dir="`pwd`"; popd > /
 #### set compiler flags depending on build-host
 
 case `sw_vers -productVersion | cut -d'.' -f1,2` in
+	"10.11")
+		echo "ElCapitan"
+		GLOBAL_CPPFLAGS="-Wno-error=unused-command-line-argument"
+		GLOBAL_CFLAGS="-O3 -Wno-error=unused-command-line-argument"
+		GLOBAL_CXXFLAGS="-O3 -Wno-error=unused-command-line-argument"
+		GLOBAL_LDFLAGS="-headerpad_max_install_names"
+		ARCHITECTURES="x86_64"
+		OSXARCH="-arch x86_64"
+		;;
 	"10.10")
 		echo "Yosemite"
 		GLOBAL_CPPFLAGS="-Wno-error=unused-command-line-argument"
@@ -78,24 +87,6 @@ export SRCDIR
 
 export PATH=${PREFIX}/bin:/usr/local/git/bin/:/usr/bin:/bin:/usr/sbin:/sbin
 
-
-################################################################################
-###  COMPILE THE BUILD-DEPENDENCIES  -> NOSTACK
-################################################################################
-
-## if the NOSTACK environment is not empty, skip re-building the stack
-## if it has been built before
-if test ! -f "${PREFIX}/zyn_stack_complete" -o -z "$NOSTACK"; then
-
-
-## Start with a clean slate
-rm -rf ${BUILDD}
-rm -rf ${PREFIX}
-
-mkdir -p ${SRCDIR}
-mkdir -p ${PREFIX}
-mkdir -p ${BUILDD}
-
 ################################################################################
 
 function autoconfconf {
@@ -127,6 +118,23 @@ function src {
 	tar xf ${SRCDIR}/${1}.${2}
 	cd $1
 }
+
+################################################################################
+###  COMPILE THE BUILD-DEPENDENCIES  -> NOSTACK
+################################################################################
+
+## if the NOSTACK environment is not empty, skip re-building the stack
+## if it has been built before
+if test ! -f "${PREFIX}/zyn_stack_complete" -o -z "$NOSTACK"; then
+
+
+## Start with a clean slate
+rm -rf ${BUILDD}
+rm -rf ${PREFIX}
+
+mkdir -p ${SRCDIR}
+mkdir -p ${PREFIX}
+mkdir -p ${BUILDD}
 
 ################################################################################
 
@@ -189,9 +197,8 @@ tar xzf ${SRCDIR}/jack_osx_dev.tar.gz
 ## easy way to build PPC binaries with a C++11 compiler we don't care..
 
 src portaudio tgz http://portaudio.com/archives/pa_stable_v19_20140130.tgz
-if ! echo "$OSXARCH" | grep -q "ppc"; then
-	autoconfbuild --enable-mac-universal --enable-static=no
-fi
+sed -i '' 's/-Werror//g' configure
+autoconfbuild --enable-mac-universal=no --enable-static=no
 
 ################################################################################
 
@@ -256,23 +263,22 @@ autoconfbuild --with-our-malloc --disable-mpi
 
 ################################################################################
 
-src mxml-2.9 tar.gz http://www.msweet.org/files/project3/mxml-2.9.tar.gz
+src mxml-2.10 tar.gz https://github.com/michaelrsweet/mxml/releases/download/release-2.10/mxml-2.10.tar.gz
 ## DSOFLAGS ? which standard did they read?
 DSOFLAGS="${OSXARCH}${GLOBAL_LDFLAGS:+ $GLOBAL_LDFLAGS}" \
-autoconfbuild --disable-shared --enable-static
+autoconfconf --disable-shared --enable-static
 ## compiling the self-test & doc fails with multi-arch, so work around this
 make libmxml.a
 make -i install TARGETS=""
 
+
 ################################################################################
 
-## project with tar-ball name != unzipped folder
-download fltk-1.3.3-source.tar.gz http://fltk.org/pub/fltk/1.3.3/fltk-1.3.3-source.tar.gz
-cd ${BUILDD}
-rm -rf fltk-1.3.3
-tar xzf ${SRCDIR}/fltk-1.3.3-source.tar.gz
-cd fltk-1.3.3
+src libuv-v1.9.1 tar.gz http://dist.libuv.org/dist/v1.9.1/libuv-v1.9.1.tar.gz
+LIBTOOLIZE=libtoolize ./autogen.sh
 autoconfbuild
+
+################################################################################
 
 ## stack built complete
 touch $PREFIX/zyn_stack_complete
@@ -281,36 +287,51 @@ touch $PREFIX/zyn_stack_complete
 fi  ## NOSTACK
 ################################################################################
 
+# TODO: git mirror repos, use references
+
+cd ${BUILDD}
+git clone --single-branch --depth=1 --recursive https://github.com/mruby-zest/mruby-zest-build
+cd mruby-zest-build
+
+ruby ./rebuild-fcache.rb
+
+gcc -c -o deps/nanovg/src/nanovg.o ${GLOBAL_CFLAGS} deps/nanovg/src/nanovg.c -fPIC \
+	&& ar -rc deps/libnanovg.a deps/nanovg/src/*.o
+
+( cd deps/pugl && ./waf configure --no-cairo --static && ./waf )
+
+( CFLAGS="-I${PREFIX}/include${GLOBAL_CPPFLAGS:+ $GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" \
+  make -C src/osc-bridge lib )
+
+cp -v ${PREFIX}/lib/libuv.a deps/
+
+( cd mruby && \
+ CFLAGS="-I${PREFIX}/include${GLOBAL_CPPFLAGS:+ $GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" \
+ OS=Mac MRUBY_CONFIG=../build_config.rb rake )
+
+gcc ${GLOBAL_CFLAGS} ${GLOBAL_LDFLAGS} -shared \
+	-o libzest.dylib \
+	`find mruby/build/host -type f | grep -e "\.o$$" | grep -v bin` ./deps/libnanovg.a \
+	./deps/libnanovg.a \
+	src/osc-bridge/libosc-bridge.a \
+	${PREFIX}/lib/libuv.a -lm -lpthread
+
+ls -l libzest.dylib
 
 
 ################################################################################
 ## check out zyn from git, keep a local reference to speed up future clones
 
-#REPO_URL=git://github.com/fundamental/zynaddsubfx.git
-REPO_URL=git://git.code.sf.net/p/zynaddsubfx/code
-
-if test ! -d ${SRCDIR}/zynaddsubfx.git.reference; then
-	git clone --mirror ${REPO_URL} ${SRCDIR}/zynaddsubfx.git.reference
-fi
-
 cd ${BUILDD}
-git clone --single-branch --reference ${SRCDIR}/zynaddsubfx.git.reference ${REPO_URL} zynaddsubfx || true
-
+git clone --single-branch --depth=1 --recursive https://github.com/zynaddsubfx/zynaddsubfx
 cd zynaddsubfx
-git submodule update --init|| true
-
-## git pull, unless locally modified
-if git diff-files --quiet --ignore-submodules -- && git diff-index --cached --quiet HEAD --ignore-submodules --; then
-	git pull || true
-	git submodule update || true
-fi
 
 ## version string for bundle
-VERSION=`git describe --tags | sed 's/-g[a-f0-9]*$//'`
-if test -z "$VERSION"; then
-	echo "*** Cannot query version information."
-	exit 1
-fi
+#VERSION=`git describe --tags | sed 's/-g[a-f0-9]*$//'`
+#if test -z "$VERSION"; then
+#	echo "*** Cannot query version information."
+#	exit 1
+#fi
 
 ################################################################################
 ## Prepare application bundle dir (for make install)
@@ -335,6 +356,7 @@ mkdir -p ${TARGET_CONTENTS}Frameworks
 rm -rf build
 mkdir -p build; cd build
 cmake -DCMAKE_INSTALL_PREFIX=/ \
+	-DGuiModule=zest -DDemoMode=release \
 	-DCMAKE_BUILD_TYPE="None" \
 	-DCMAKE_OSX_ARCHITECTURES="$ARCHITECTURES" \
 	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter" \
@@ -344,7 +366,17 @@ cmake -DCMAKE_INSTALL_PREFIX=/ \
 	-DNoNeonPlease=ON \
 	..
 make
-DESTDIR=${TARGET_CONTENTS} make install
+#DESTDIR=${TARGET_CONTENTS} make install
+
+#######################################################################################
+
+exit
+
+#######################################################################################
+#######################################################################################
+############ TO BE CONTINUED ONCE ZYN COMPILES ########################################
+#######################################################################################
+#######################################################################################
 
 #######################################################################################
 ## fixup 'make install' for OSX application bundle
