@@ -28,7 +28,7 @@
 ## concurrency
 : ${MAKEFLAGS="-j4"}
 ## if the NOSTACK environment var is not empty, skip re-building the stack if it has been built before
-: ${NOSTACK=""}
+: ${NOSTACK="true"}
 ## semicolon separated list of fat-binary architectures, ppc;i386;x86_64
 : ${ARCHITECTURES="i386;x86_64"}
 
@@ -55,6 +55,12 @@ case `sw_vers -productVersion | cut -d'.' -f1,2` in
 		GLOBAL_CXXFLAGS="-O3 -Wno-error=unused-command-line-argument -mmacosx-version-min=10.9 -DMAC_OS_X_VERSION_MAX_ALLOWED=1090"
 		GLOBAL_LDFLAGS="-mmacosx-version-min=10.9 -DMAC_OS_X_VERSION_MAX_ALLOWED=1090 -headerpad_max_install_names"
 		;;
+	"10.6")
+		ARCHITECTURES="x86_64"
+		GLOBAL_CFLAGS="-O3"
+		GLOBAL_CXXFLAGS="-O3"
+		GLOBAL_LDFLAGS="-headerpad_max_install_names"
+		;;
 	*)
 		echo "**UNTESTED OSX VERSION**"
 		echo "if it works, please report back :)"
@@ -77,6 +83,52 @@ if test -z "$OSXARCH"; then
 	IFS=$OLDIFS
 fi
 
+#####
+##### on 10.6 one time setup: install a C++11 compiler
+##### (use with ccache path=/usr/local/gcc-7.2/bin/)
+#####
+## https://gmplib.org/download/gmp/gmp-6.1.2.tar.lz
+## http://www.mpfr.org/mpfr-current/mpfr-4.0.0.tar.bz2
+## ftp://ftp.gnu.org/gnu/mpc/mpc-1.0.3.tar.gz
+## ftp://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2
+## ftp://ftp.fu-berlin.de/unix/languages/gcc/releases/gcc-7.2.0/gcc-7.2.0.tar.xz
+##
+## cd gmp-6.1.2
+## mkdir build && cd build
+## ../configure --prefix=/usr/local/gcc-7.2 --enable-cxx
+## make -j 2
+## sudo make install
+## cd ../..
+##
+## cd mpfr-4.0.0
+## mkdir build && cd build
+## ../configure --prefix=/usr/local/gcc-7.2 --with-gmp=/usr/local/gcc-7.2
+## make -j 2
+## sudo make install
+## cd ../..
+##
+## cd mpc-1.0.3
+## sed -i '' s/mpfr_fmma/_mpfr_fmma/ src/mul.c
+## mkdir build && cd build
+## ./configure --prefix=/usr/local/gcc-7.2 --with-gmp=/usr/local/gcc-7.2 --with-mpfr=/usr/local/gcc-7.2
+## make -j 2
+## sudo make install
+## cd ../..
+##
+## cd isl-0.18
+## mkdir build && cd build
+## ../configure --prefix=/usr/local/gcc-7.2 --with-gmp-prefix=/usr/local/gcc-7.2
+## make -j 2
+## sudo make install
+## cd ../..
+##
+## cd gcc-7.2.0
+## mkdir build && cd build
+## ../configure --prefix=/usr/local/gcc-7.2 --enable-checking=release --with-gmp=/usr/local/gcc-7.2 --with-mpfr=/usr/local/gcc-7.2 -with-mpc=/usr/local/gcc-7.2  --with-isl=/usr/local/gcc-7.2 --enable-languages=c,c++,fortran,objc,obj-c++  #  --program-suffix=-7.2
+## time make -j 2
+## sudo make install
+
+
 ################################################################################
 set -e
 
@@ -85,7 +137,7 @@ export PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
 export PREFIX
 export SRCDIR
 
-export PATH=${PREFIX}/bin:/usr/local/git/bin/:/usr/bin:/bin:/usr/sbin:/sbin
+export PATH=${PREFIX}/bin:${HOME}/bin:/usr/local/git/bin/:/usr/bin:/bin:/usr/sbin:/sbin
 
 ################################################################################
 
@@ -147,7 +199,7 @@ src pkg-config-0.28 tar.gz http://pkgconfig.freedesktop.org/releases/pkg-config-
 make $MAKEFLAGS
 make install
 
-src autoconf-2.69 tar.xz http://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.gz
+src autoconf-2.69 tar.gz http://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.gz
 autoconfbuild
 hash autoconf
 hash autoreconf
@@ -179,20 +231,78 @@ make $MAKEFLAGS
 make install
 
 
+src liblo-0.28 tar.gz http://downloads.sourceforge.net/liblo/liblo-0.28.tar.gz
+## clang/OSX is picky about abs()  -Werror,-Wabsolute-value
+patch -p1 << EOF
+--- a/src/message.c	2015-11-17 17:12:15.000000000 +0100
++++ b/src/message.c	2015-11-17 17:13:28.000000000 +0100
+@@ -997,6 +997,6 @@
+     if (d != end) {
+         fprintf(stderr,
+                 "liblo warning: type and data do not match (off by %d) in message %p\n",
+-                abs((char *) d - (char *) end), m);
++                abs((int)((char *) d - (char *) end)), m);
+     }
+ }
+@@ -1014,6 +1014,8 @@
+     int size;
+     int i;
+ 
++    val64.nl = 0;
++
+     size = lo_arg_size(type, data);
+     if (size == 4 || type == LO_BLOB) {
+         if (bigendian) {
+EOF
+
+autoconfbuild --disable-shared --enable-static
+
+
+src freetype-2.5.3 tar.gz http://download.savannah.gnu.org/releases/freetype/freetype-2.5.3.tar.gz
+autoconfbuild --with-harfbuzz=no --with-png=no --with-bzip2=no
+
+
+src fftw-3.3.4 tar.gz http://www.fftw.org/fftw-3.3.4.tar.gz
+autoconfbuild --with-our-malloc --disable-mpi
+
+
+src mxml-2.10 tar.gz https://github.com/michaelrsweet/mxml/releases/download/release-2.10/mxml-2.10.tar.gz
+## DSOFLAGS ? which standard did they read?
+DSOFLAGS="${OSXARCH}${GLOBAL_LDFLAGS:+ $GLOBAL_LDFLAGS}" \
+autoconfconf --disable-shared --enable-static
+## compiling the self-test & doc fails with multi-arch, so work around this
+make libmxml.a
+make -i install TARGETS=""
+
+
+src libuv-v1.9.1 tar.gz http://dist.libuv.org/dist/v1.9.1/libuv-v1.9.1.tar.gz
+LIBTOOLIZE=libtoolize ./autogen.sh
+autoconfbuild
+
 ################################################################################
+
+src ruby-2.3.6 tar.gz https://cache.ruby-lang.org/pub/ruby/2.3/ruby-2.3.6.tar.gz
+CC=gcc CXX=g++ autoconfbuild
+
+################################################################################
+
+### NO AUDIO ###  plugin versions only
+if false; then
+
+####
 ## we only want jack headers - not the complete jack installation, sadly upsteam
 ## only provides a osx installer (which needs admin privileges and drops things
 ## to /usr/local/ --- this is a re-pack of the relevant files from there.
+
 download jack_osx_dev.tar.gz http://robin.linuxaudio.org/jack_osx_dev.tar.gz
 cd "$PREFIX"
 tar xzf ${SRCDIR}/jack_osx_dev.tar.gz
 "$PREFIX"/update_pc_prefix.sh
 
-
-################################################################################
+####
 ## does not build cleanly with multiarch (little/big endian),
-## TODO build separate dylibs (one for every arch) then lipo combine them and 
-## ifdef the mixed header. 
+## TODO build separate dylibs (one for every arch) then lipo combine them and
+## ifdef the mixed header.
 ## it's optional for zynaddsubfx, since zyn needs C++11 and there's no
 ## easy way to build PPC binaries with a C++11 compiler we don't care..
 
@@ -200,8 +310,7 @@ src portaudio tgz http://portaudio.com/archives/pa_stable_v19_20140130.tgz
 sed -i '' 's/-Werror//g' configure
 autoconfbuild --enable-mac-universal=no --enable-static=no
 
-################################################################################
-
+####
 ## portmidi needs a bit of convincing..
 download portmidi-src-217.zip http://sourceforge.net/projects/portmedia/files/portmidi/217/portmidi-src-217.zip/download
 cd ${BUILDD}
@@ -233,50 +342,7 @@ install_name_tool -id ${PREFIX}/lib/libportmidi.dylib ${PREFIX}/lib/libportmidi.
 cp pm_common/portmidi.h ${PREFIX}/include
 cp porttime/porttime.h ${PREFIX}/include
 
-################################################################################
-
-src liblo-0.28 tar.gz http://downloads.sourceforge.net/liblo/liblo-0.28.tar.gz
-## clang/OSX is picky about abs()  -Werror,-Wabsolute-value
-patch -p1 << EOF
---- a/src/message.c	2015-11-17 17:12:15.000000000 +0100
-+++ b/src/message.c	2015-11-17 17:13:28.000000000 +0100
-@@ -997,6 +997,6 @@
-     if (d != end) {
-         fprintf(stderr,
-                 "liblo warning: type and data do not match (off by %d) in message %p\n",
--                abs((char *) d - (char *) end), m);
-+                abs((int)((char *) d - (char *) end)), m);
-     }
- }
-EOF
-autoconfbuild --disable-shared --enable-static
-
-################################################################################
-
-src freetype-2.5.3 tar.gz http://download.savannah.gnu.org/releases/freetype/freetype-2.5.3.tar.gz
-autoconfbuild --with-harfbuzz=no --with-png=no --with-bzip2=no
-
-################################################################################
-
-src fftw-3.3.4 tar.gz http://www.fftw.org/fftw-3.3.4.tar.gz
-autoconfbuild --with-our-malloc --disable-mpi
-
-################################################################################
-
-src mxml-2.10 tar.gz https://github.com/michaelrsweet/mxml/releases/download/release-2.10/mxml-2.10.tar.gz
-## DSOFLAGS ? which standard did they read?
-DSOFLAGS="${OSXARCH}${GLOBAL_LDFLAGS:+ $GLOBAL_LDFLAGS}" \
-autoconfconf --disable-shared --enable-static
-## compiling the self-test & doc fails with multi-arch, so work around this
-make libmxml.a
-make -i install TARGETS=""
-
-
-################################################################################
-
-src libuv-v1.9.1 tar.gz http://dist.libuv.org/dist/v1.9.1/libuv-v1.9.1.tar.gz
-LIBTOOLIZE=libtoolize ./autogen.sh
-autoconfbuild
+fi ## END NO AUIO
 
 ################################################################################
 
@@ -287,68 +353,82 @@ touch $PREFIX/zyn_stack_complete
 fi  ## NOSTACK
 ################################################################################
 
-# TODO: git mirror repos, use references
+
+################################################################################
+## mruby-zest
 
 cd ${BUILDD}
-git clone --single-branch --depth=1 --recursive https://github.com/mruby-zest/mruby-zest-build
+git clone --single-branch --depth=1 --recursive https://github.com/mruby-zest/mruby-zest-build || true
 cd mruby-zest-build
 
 ruby ./rebuild-fcache.rb
 
-gcc -c -o deps/nanovg/src/nanovg.o ${GLOBAL_CFLAGS} deps/nanovg/src/nanovg.c -fPIC \
-	&& ar -rc deps/libnanovg.a deps/nanovg/src/*.o
+gcc ${GLOBAL_CPPFLAGS} ${GLOBAL_CFLAGS} ${OSXARCH} \
+	-o deps/nanovg/src/nanovg.o \
+	-c deps/nanovg/src/nanovg.c -fPIC
+ar -rc deps/libnanovg.a deps/nanovg/src/*.o
 
-( cd deps/pugl && ./waf configure --no-cairo --static && ./waf )
+( \
+  cd deps/pugl && rm -rf build && \
+  CC=gcc CFLAGS="${GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" LINKFLAGS="${OSXARCH} $GLOBAL_LDFLAGS" \
+  ./waf configure --no-cairo --static && \
+  ./waf \
+)
 
-( CFLAGS="-I${PREFIX}/include${GLOBAL_CPPFLAGS:+ $GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" \
-  make -C src/osc-bridge lib )
+CFLAGS="-I${PREFIX}/include ${GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" make -C src/osc-bridge lib
 
 cp -v ${PREFIX}/lib/libuv.a deps/
 
 ( cd mruby && \
- CFLAGS="-I${PREFIX}/include${GLOBAL_CPPFLAGS:+ $GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" \
+ CFLAGS="-I${PREFIX}/include ${GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" \
+ LDFLAGS="${OSXARCH} ${GLOBAL_LDFLAGS}" \
  OS=Mac MRUBY_CONFIG=../build_config.rb rake )
 
-gcc ${GLOBAL_CFLAGS} ${GLOBAL_LDFLAGS} -shared \
+cd ${BUILDD}/mruby-zest-build
+
+gcc ${GLOBAL_CPPFLAGS} ${GLOBAL_CFLAGS} ${OSXARCH} \
+	-shared -pthread \
+	-static-libgcc \
 	-o libzest.dylib \
-	`find mruby/build/host -type f | grep -e "\.o$$" | grep -v bin` ./deps/libnanovg.a \
-	./deps/libnanovg.a \
+	`find mruby/build/host -type f -name "*.o" | grep -v bin` ./deps/libnanovg.a \
+	${GLOBAL_LDFLAGS} \
+	deps/libnanovg.a \
 	src/osc-bridge/libosc-bridge.a \
-	${PREFIX}/lib/libuv.a -lm -lpthread
+	${PREFIX}/lib/libuv.a
 
-ls -l libzest.dylib
+file libzest.dylib
+otool -L libzest.dylib
 
+gcc ${GLOBAL_CPPFLAGS} ${GLOBAL_CFLAGS} ${OSXARCH} \
+	-I deps/pugl \
+	-std=gnu99 -static-libgcc \
+	-o zyn-fusion \
+	test-libversion.c \
+	${GLOBAL_LDFLAGS} \
+	deps/pugl/build/libpugl-0.a \
+	-framework Cocoa -framework openGL
+
+file zyn-fusion
+otool -L zyn-fusion
 
 ################################################################################
-## check out zyn from git, keep a local reference to speed up future clones
 
 cd ${BUILDD}
-git clone --single-branch --depth=1 --recursive https://github.com/zynaddsubfx/zynaddsubfx
+git clone --single-branch --recursive https://github.com/zynaddsubfx/zynaddsubfx || true
 cd zynaddsubfx
 
 ## version string for bundle
-#VERSION=`git describe --tags | sed 's/-g[a-f0-9]*$//'`
-#if test -z "$VERSION"; then
-#	echo "*** Cannot query version information."
-#	exit 1
-#fi
+VERSION=`git describe --tags | sed 's/-g[a-f0-9]*$//'`
 
-################################################################################
-## Prepare application bundle dir (for make install)
 
-PRODUCT_NAME="ZynAddSubFx"
-APPNAME="${PRODUCT_NAME}.app"
+## when using gcc-7.2 on macosx distro helpers re-define fmin(),fmax(),rint() and round()
+if true; then
+	sed -i '' 's/DISTRHO_OS_MAC/DISTRHOHOHOHO_OS_MAC/' DPF/distrho/DistrhoUtils.hpp
+fi
 
-RSRC_DIR="$this_script_dir"
-
-export BUNDLEDIR=`mktemp -d -t bundle`
-trap "rm -rf $BUNDLEDIR" EXIT
-
-TARGET_BUILD_DIR="${BUNDLEDIR}/${APPNAME}/"
-TARGET_CONTENTS="${TARGET_BUILD_DIR}Contents/"
-
-mkdir -p ${TARGET_CONTENTS}MacOS
-mkdir -p ${TARGET_CONTENTS}Frameworks
+##  Window.cpp needs to be compiled as obj-c++
+cp DPF/dgl/src/Window.cpp DPF/dgl/src/Window.mm
+sed -i '' 's/Window\.cpp/Window.mm/'  src/Plugin/ZynAddSubFX/CMakeLists.txt
 
 #######################################################################################
 ## finally, configure and build zynaddsubfx
@@ -359,189 +439,88 @@ cmake -DCMAKE_INSTALL_PREFIX=/ \
 	-DGuiModule=zest -DDemoMode=release \
 	-DCMAKE_BUILD_TYPE="None" \
 	-DCMAKE_OSX_ARCHITECTURES="$ARCHITECTURES" \
-	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter" \
-	-DCMAKE_CXX_FLAGS="-I${PREFIX}/include $GLOBAL_CXXFLAGS -Wno-unused-parameter" \
-	-DCMAKE_EXE_LINKER_FLAGS="-L$PREFIX/lib $GLOBAL_LDFLAGS" \
+	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter -static-libgcc" \
+	-DCMAKE_CXX_FLAGS="-I${PREFIX}/include $GLOBAL_CXXFLAGS -Wno-unused-parameter -fpermissive -static-libstdc++" \
+	-DCMAKE_EXE_LINKER_FLAGS="-L$PREFIX/lib $GLOBAL_LDFLAGS -static-libgcc -static-libstdc++" \
+	-DCMAKE_SHARED_LINKER_FLAGS="-L$PREFIX/lib $GLOBAL_LDFLAGS -static-libgcc -static-libstdc++" \
 	-DCMAKE_SKIP_BUILD_RPATH=ON \
 	-DNoNeonPlease=ON \
 	..
 make
-#DESTDIR=${TARGET_CONTENTS} make install
+
+################################################################################
+## Prepare application bundle dir (for make install)
+
+PRODUCT_NAME="ZynAddSubFx"
+RSRC_DIR="$this_script_dir"
+
+export BUNDLEDIR=`mktemp -d -t bundle`
+trap "rm -rf $BUNDLEDIR" EXIT
+
+TARGET_CONTENTS="${BUNDLEDIR}/inst/"
+
+DESTDIR=${TARGET_CONTENTS} make install
 
 #######################################################################################
-
-exit
-
-#######################################################################################
-#######################################################################################
-############ TO BE CONTINUED ONCE ZYN COMPILES ########################################
-#######################################################################################
 #######################################################################################
 
-#######################################################################################
-## fixup 'make install' for OSX application bundle
+MRUBYZEST=${BUILDD}/mruby-zest-build/
+ZYNLV2=${BUNDLEDIR}/LV2/ZynAddSubFX.lv2/
+ZYNVST=${BUNDLEDIR}/VST/ZynAddSubFX.vst/
+ZYNDAT=${ZYNVST}Contents/Resources/
 
-mv -v ${TARGET_CONTENTS}bin/zynaddsubfx ${TARGET_CONTENTS}MacOS/zynaddsubfx-bin
-mv ${TARGET_CONTENTS}bin/zynaddsubfx-ext-gui ${TARGET_CONTENTS}lib/lv2/ZynAddSubFX.lv2/
+mv -v ${TARGET_CONTENTS}lib/lv2                   ${BUNDLEDIR}/LV2
 
-mv -v ${TARGET_CONTENTS}share ${TARGET_CONTENTS}/Resources
+cp -v ${MRUBYZEST}libzest.dylib                   ${ZYNLV2}
+cp -a ${TARGET_CONTENTS}share/zynaddsubfx/banks   ${ZYNLV2}
+mkdir                                             ${ZYNLV2}font/
+mkdir                                             ${ZYNLV2}schema/
+mkdir                                             ${ZYNLV2}qml/
+touch                                             ${ZYNLV2}qml/MainWindow.qml
+cp -v ${MRUBYZEST}src/osc-bridge/schema/test.json ${ZYNLV2}schema/
+cp -v ${MRUBYZEST}deps/nanovg/example/*.ttf       ${ZYNLV2}font/
 
-mv -v ${TARGET_CONTENTS}/Resources/zynaddsubfx/banks ${TARGET_CONTENTS}/Resources/
-mv -v ${TARGET_CONTENTS}/Resources/zynaddsubfx/examples ${TARGET_CONTENTS}/Resources/
 
-rmdir ${TARGET_CONTENTS}/Resources/zynaddsubfx/
-rmdir ${TARGET_CONTENTS}bin
 
-mv  -v ${TARGET_CONTENTS}lib/lv2 ${BUNDLEDIR}/
-mv  -v ${TARGET_CONTENTS}lib/vst ${BUNDLEDIR}/
-rmdir ${TARGET_CONTENTS}lib
+mkdir -p ${ZYNVST}Contents/MacOS
+mkdir -p ${ZYNDAT}
+cp -v ${TARGET_CONTENTS}lib/vst/ZynAddSubFX.dylib ${ZYNVST}Contents/MacOS/
+echo "BNDL????" > ${ZYNVST}Contents/PkgInfo
 
-#######################################################################################
-## finish OSX application bundle
+cp -v ${MRUBYZEST}libzest.dylib                   ${ZYNDAT}
+cp -a ${TARGET_CONTENTS}share/zynaddsubfx/banks   ${ZYNDAT}
+mkdir                                             ${ZYNDAT}font/
+mkdir                                             ${ZYNDAT}schema/
+mkdir                                             ${ZYNDAT}qml/
+touch                                             ${ZYNDAT}qml/MainWindow.qml
+cp -v ${MRUBYZEST}src/osc-bridge/schema/test.json ${ZYNDAT}schema/
+cp -v ${MRUBYZEST}deps/nanovg/example/*.ttf       ${ZYNDAT}font/
 
-echo "APPL~~~~" > ${TARGET_CONTENTS}PkgInfo
-
-cat > ${TARGET_CONTENTS}Info.plist << EOF
+cat >> ${ZYNVST}Contents/Info.plist << EOF
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+
 <plist version="1.0">
-<dict>
-	<key>CFBundleExecutable</key>
-	<string>${PRODUCT_NAME}</string>
-	<key>CFBundleName</key>
-	<string>${PRODUCT_NAME}</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleSignature</key>
-	<string>~~~~</string>
-	<key>CFBundleVersion</key>
-	<string>1.0</string>
-	<key>CFBundleIconFile</key>
-	<string>${PRODUCT_NAME}</string>
-	<key>CSResourcesFileMapped</key>
-	<true/>
-</dict>
+  <dict>
+    <key>CFBundleExecutable</key>
+    <string>ZynAddSubFX</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ZynAddSubFx VST</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.github.zynaddsubfx.vst</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>CSResourcesFileMapped</key>
+    <true/>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+  </dict>
 </plist>
 EOF
-
-## ... and add a wrapper-script that checks for jack
-
-cat > "${TARGET_CONTENTS}MacOS/${PRODUCT_NAME}" << EOF
-#!/bin/sh
-
-if test ! -x /usr/local/bin/jackd -a ! -x /usr/bin/jackd ; then
-  /usr/bin/osascript -e '
-    tell application "Finder"
-    display dialog "You do not have JACK installed. ${PRODUCT_NAME} will not run without it. See http://jackaudio.org/ for info." buttons["OK"]
-    end tell'
-  exit 1
-fi
-
-progname="\$0"
-curdir=\`dirname "\${progname}"\`
-progbase=\`basename "\$progname"\`
-execname=\${curdir}/\${progbase}-bin
-
-if test -x "\$execname"; then
-  cd "\${curdir}"
-  exec "\${execname}" -a
-fi
-EOF
-
-chmod +x "${TARGET_CONTENTS}MacOS/${PRODUCT_NAME}"
-
-## copy the application icon
-cp -vi ${RSRC_DIR}/${PRODUCT_NAME}.icns ${TARGET_CONTENTS}/Resources
-
-
-##############################################################################
-## add dependencies..
-
-echo "bundle libraries ..."
-while [ true ] ; do
-	missing=false
-	for file in ${TARGET_CONTENTS}MacOS/* ${TARGET_CONTENTS}Frameworks/*; do
-		set +e # grep may return 1
-		if ! file $file | grep -qs Mach-O ; then
-			continue;
-		fi
-		deps=`otool -arch all -L $file \
-			| awk '{print $1}' \
-			| egrep "$PREFIX" \
-			| grep -v 'libjack\.' \
-			| sort | uniq`
-		set -e
-		for dep in $deps ; do
-			base=`basename $dep`
-			if ! test -f ${TARGET_CONTENTS}Frameworks/$base; then
-				cp -v $dep ${TARGET_CONTENTS}Frameworks/
-				missing=true
-			fi
-		done
-	done
-	if test x$missing = xfalse ; then
-		break
-	fi
-done
-
-echo "update executables ..."
-for exe in ${TARGET_CONTENTS}MacOS/*; do
-	set +e # grep may return 1
-	if ! file $exe | grep -qs Mach-O ; then
-		continue
-	fi
-	changes=""
-	libs=`otool -arch all -L $exe \
-		| awk '{print $1}' \
-		| egrep "$PREFIX" \
-		| grep -v 'libjack\.' \
-		| sort | uniq`
-	set -e
-	for lib in $libs; do
-		base=`basename $lib`
-		changes="$changes -change $lib @executable_path/../Frameworks/$base"
-	done
-	if test "x$changes" != "x" ; then
-		install_name_tool $changes $exe
-	fi
-done
-
-echo "update libraries ..."
-for dylib in ${TARGET_CONTENTS}Frameworks/*.dylib ; do
-	# skip symlinks
-	if test -L $dylib ; then
-		continue
-	fi
-	strip -SXx $dylib
-
-	# change all the dependencies
-	changes=""
-	libs=`otool -arch all -L $dylib \
-		| awk '{print $1}' \
-		| egrep "$PREFIX" \
-		| grep -v 'libjack\.' \
-		| sort | uniq`
-
-	for lib in $libs; do
-		base=`basename $lib`
-		changes="$changes -change $lib @executable_path/../Frameworks/$base"
-	done
-
-	if test "x$changes" != x ; then
-		if  install_name_tool $changes $dylib ; then
-			:
-		else
-			exit 1
-		fi
-	fi
-
-	# now the change what the library thinks its own name is
-	base=`basename $dylib`
-	install_name_tool -id @executable_path/../Frameworks/$base $dylib
-done
-
-echo "..all bundled up."
-
 
 ##############################################################################
 ## all done. now roll a DMG
@@ -551,7 +530,6 @@ UC_DMG="${OUTDIR}${PRODUCT_NAME}-${VERSION}.dmg"
 DMGBACKGROUND=${RSRC_DIR}/dmgbg.png
 VOLNAME=$PRODUCT_NAME-${VERSION}
 EXTRA_SPACE_MB=5
-
 
 DMGMEGABYTES=$[ `du -sck "${BUNDLEDIR}" | tail -n 1 | cut -f 1` * 1024 / 1048576 + $EXTRA_SPACE_MB ]
 echo "DMG MB = " $DMGMEGABYTES
@@ -573,9 +551,8 @@ DiskDevice=$(hdid -nomount "$TMPDMG" | grep Apple_HFS | cut -f 1 -d ' ')
 newfs_hfs -v "${VOLNAME}" "${DiskDevice}"
 mount -t hfs -o nobrowse "${DiskDevice}" "${MNTPATH}"
 
-cp -a "${TARGET_BUILD_DIR}" "${MNTPATH}/${APPNAME}"
-cp -a "${BUNDLEDIR}/lv2" "${MNTPATH}/"
-cp -a "${BUNDLEDIR}/vst" "${MNTPATH}/"
+cp -a "${BUNDLEDIR}/LV2" "${MNTPATH}/"
+cp -a "${BUNDLEDIR}/VST" "${MNTPATH}/"
 
 mkdir "${MNTPATH}/.background"
 cp -vi ${DMGBACKGROUND} "${MNTPATH}/.background/dmgbg.png"
@@ -603,11 +580,10 @@ echo '
 	   set arrangement of theViewOptions to not arranged
 	   set icon size of theViewOptions to 64
 	   set background picture of theViewOptions to file ".background:dmgbg.png"
-	   make new alias file at container window to POSIX file "/Applications" with properties {name:"Applications"}
-	   set position of item "'${APPNAME}'" of container window to {100, 100}
-	   set position of item "Applications" of container window to {310, 100}
-	   set position of item "lv2" of container window to {100, 260}
-	   set position of item "vst" of container window to {310, 260}
+	   make new alias file at container window to POSIX file "/Library/Audio/Plug-Ins/" with properties {name:"Plug-Ins"}
+	   set position of item "Plug-Ins" of container window to {310, 100}
+	   set position of item "LV2" of container window to {100, 260}
+	   set position of item "VST" of container window to {310, 260}
 	   close
 	   open
 	   update without registering applications
