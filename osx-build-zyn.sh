@@ -223,6 +223,11 @@ make install
 
 ################################################################################
 
+src ruby-2.3.6 tar.gz https://cache.ruby-lang.org/pub/ruby/2.3/ruby-2.3.6.tar.gz
+CC=gcc CXX=g++ autoconfbuild
+
+################################################################################
+
 src zlib-1.2.7 tar.gz ftp://ftp.simplesystems.org/pub/libpng/png/src/history/zlib/zlib-1.2.7.tar.gz
 CFLAGS="${GLOBAL_CFLAGS}" \
 LDFLAGS="${GLOBAL_LDFLAGS}" \
@@ -230,6 +235,9 @@ LDFLAGS="${GLOBAL_LDFLAGS}" \
 make $MAKEFLAGS
 make install
 
+GLOBAL_CFLAGS="$GLOBAL_CFLAGS -fvisibility=hidden -fdata-sections -ffunction-sections"
+GLOBAL_CXXFLAGS="$GLOBAL_CXXFLAGS -fvisibility=hidden -fvisibility-inlines-hidden -fdata-sections -ffunction-sections"
+GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Bsymbolic -fvisibility=hidden -fdata-sections -ffunction-sections"
 
 src liblo-0.28 tar.gz http://downloads.sourceforge.net/liblo/liblo-0.28.tar.gz
 ## clang/OSX is picky about abs()  -Werror,-Wabsolute-value
@@ -276,13 +284,10 @@ make -i install TARGETS=""
 
 
 src libuv-v1.9.1 tar.gz http://dist.libuv.org/dist/v1.9.1/libuv-v1.9.1.tar.gz
+sed -i '' 's/__attribute__((visibility("default")))//' ./include/uv.h
 LIBTOOLIZE=libtoolize ./autogen.sh
-autoconfbuild
+autoconfbuild --disable-shared --enable-static
 
-################################################################################
-
-src ruby-2.3.6 tar.gz https://cache.ruby-lang.org/pub/ruby/2.3/ruby-2.3.6.tar.gz
-CC=gcc CXX=g++ autoconfbuild
 
 ################################################################################
 
@@ -350,6 +355,13 @@ fi ## END NO AUIO
 touch $PREFIX/zyn_stack_complete
 
 ################################################################################
+
+else
+
+GLOBAL_CFLAGS="$GLOBAL_CFLAGS -fvisibility=hidden -fdata-sections -ffunction-sections"
+GLOBAL_CXXFLAGS="$GLOBAL_CXXFLAGS -fvisibility=hidden -fvisibility-inlines-hidden -fdata-sections -ffunction-sections"
+GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Bsymbolic -fvisibility=hidden -fdata-sections -ffunction-sections"
+
 fi  ## NOSTACK
 ################################################################################
 
@@ -364,6 +376,7 @@ cd mruby-zest-build
 ruby ./rebuild-fcache.rb
 
 gcc ${GLOBAL_CPPFLAGS} ${GLOBAL_CFLAGS} ${OSXARCH} \
+	-D STBTT_STATIC \
 	-o deps/nanovg/src/nanovg.o \
 	-c deps/nanovg/src/nanovg.c -fPIC
 ar -rc deps/libnanovg.a deps/nanovg/src/*.o
@@ -433,14 +446,16 @@ sed -i '' 's/Window\.cpp/Window.mm/'  src/Plugin/ZynAddSubFX/CMakeLists.txt
 #######################################################################################
 ## finally, configure and build zynaddsubfx
 
+GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Wl,-dead_strip -Wl,-keep_private_externs"
+
 rm -rf build
 mkdir -p build; cd build
 cmake -DCMAKE_INSTALL_PREFIX=/ \
 	-DGuiModule=zest -DDemoMode=release \
 	-DCMAKE_BUILD_TYPE="None" \
 	-DCMAKE_OSX_ARCHITECTURES="$ARCHITECTURES" \
-	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter -static-libgcc" \
-	-DCMAKE_CXX_FLAGS="-I${PREFIX}/include $GLOBAL_CXXFLAGS -Wno-unused-parameter -fpermissive -static-libstdc++" \
+	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter" \
+	-DCMAKE_CXX_FLAGS="-I${PREFIX}/include $GLOBAL_CXXFLAGS -Wno-unused-parameter -fpermissive" \
 	-DCMAKE_EXE_LINKER_FLAGS="-L$PREFIX/lib $GLOBAL_LDFLAGS -static-libgcc -static-libstdc++" \
 	-DCMAKE_SHARED_LINKER_FLAGS="-L$PREFIX/lib $GLOBAL_LDFLAGS -static-libgcc -static-libstdc++" \
 	-DCMAKE_SKIP_BUILD_RPATH=ON \
@@ -466,6 +481,7 @@ DESTDIR=${TARGET_CONTENTS} make install
 
 MRUBYZEST=${BUILDD}/mruby-zest-build/
 ZYNLV2=${BUNDLEDIR}/LV2/ZynAddSubFX.lv2/
+
 ZYNVST=${BUNDLEDIR}/VST/ZynAddSubFX.vst/
 ZYNDAT=${ZYNVST}Contents/Resources/
 
@@ -503,7 +519,7 @@ cat >> ${ZYNVST}Contents/Info.plist << EOF
 <plist version="1.0">
   <dict>
     <key>CFBundleExecutable</key>
-    <string>ZynAddSubFX</string>
+    <string>ZynAddSubFX.dylib</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
