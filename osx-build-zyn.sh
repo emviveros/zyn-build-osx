@@ -110,7 +110,7 @@ fi
 ## cd mpc-1.0.3
 ## sed -i '' s/mpfr_fmma/_mpfr_fmma/ src/mul.c
 ## mkdir build && cd build
-## ./configure --prefix=/usr/local/gcc-7.2 --with-gmp=/usr/local/gcc-7.2 --with-mpfr=/usr/local/gcc-7.2
+## ../configure --prefix=/usr/local/gcc-7.2 --with-gmp=/usr/local/gcc-7.2 --with-mpfr=/usr/local/gcc-7.2
 ## make -j 2
 ## sudo make install
 ## cd ../..
@@ -446,7 +446,7 @@ sed -i '' 's/Window\.cpp/Window.mm/'  src/Plugin/ZynAddSubFX/CMakeLists.txt
 #######################################################################################
 ## finally, configure and build zynaddsubfx
 
-GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Wl,-dead_strip -Wl,-keep_private_externs"
+GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Wl,-dead_strip"
 
 rm -rf build
 mkdir -p build; cd build
@@ -479,11 +479,46 @@ DESTDIR=${TARGET_CONTENTS} make install
 #######################################################################################
 #######################################################################################
 
+function macvst {
+	mkdir -p $1/Contents/MacOS
+
+	echo "BNDL????" > $1/Contents/PkgInfo
+
+	cat >> $1/Contents/Info.plist << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+
+<plist version="1.0">
+  <dict>
+    <key>CFBundleExecutable</key>
+    <string>${2}.dylib</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ZynAddSubFx VST</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.github.zynaddsubfx.vst.$2</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>CSResourcesFileMapped</key>
+    <true/>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+  </dict>
+</plist>
+EOF
+
+
+}
+#######################################################################################
+#######################################################################################
+
 MRUBYZEST=${BUILDD}/mruby-zest-build/
 ZYNLV2=${BUNDLEDIR}/LV2/ZynAddSubFX.lv2/
 
 ZYNVST=${BUNDLEDIR}/VST/ZynAddSubFX.vst/
-ZYNDAT=${ZYNVST}Contents/Resources/
 
 mv -v ${TARGET_CONTENTS}lib/lv2                   ${BUNDLEDIR}/LV2
 
@@ -497,11 +532,11 @@ cp -v ${MRUBYZEST}src/osc-bridge/schema/test.json ${ZYNLV2}schema/
 cp -v ${MRUBYZEST}deps/nanovg/example/*.ttf       ${ZYNLV2}font/
 
 
+macvst "${ZYNVST}" "ZynAddSubFX"
 
-mkdir -p ${ZYNVST}Contents/MacOS
+ZYNDAT=${ZYNVST}Contents/Resources/
 mkdir -p ${ZYNDAT}
 cp -v ${TARGET_CONTENTS}lib/vst/ZynAddSubFX.dylib ${ZYNVST}Contents/MacOS/
-echo "BNDL????" > ${ZYNVST}Contents/PkgInfo
 
 cp -v ${MRUBYZEST}libzest.dylib                   ${ZYNDAT}
 cp -a ${TARGET_CONTENTS}share/zynaddsubfx/banks   ${ZYNDAT}
@@ -512,31 +547,9 @@ touch                                             ${ZYNDAT}qml/MainWindow.qml
 cp -v ${MRUBYZEST}src/osc-bridge/schema/test.json ${ZYNDAT}schema/
 cp -v ${MRUBYZEST}deps/nanovg/example/*.ttf       ${ZYNDAT}font/
 
-cat >> ${ZYNVST}Contents/Info.plist << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 
-<plist version="1.0">
-  <dict>
-    <key>CFBundleExecutable</key>
-    <string>ZynAddSubFX.dylib</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>ZynAddSubFx VST</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.github.zynaddsubfx.vst</string>
-    <key>CFBundlePackageType</key>
-    <string>BNDL</string>
-    <key>CFBundleVersion</key>
-    <string>$VERSION</string>
-    <key>CSResourcesFileMapped</key>
-    <true/>
-    <key>CFBundleSignature</key>
-    <string>????</string>
-  </dict>
-</plist>
-EOF
+macvst "${BUNDLEDIR}/VST/ZynReverb.vst/" "ZynReverb"
+cp -v ${TARGET_CONTENTS}lib/vst/ZynReverb.dylib   ${BUNDLEDIR}/VST/ZynReverb.vst/Contents/MacOS/
 
 ##############################################################################
 ## all done. now roll a DMG
