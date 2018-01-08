@@ -73,6 +73,8 @@ ZYNVSTRES=${ZYNVST}/Contents/Resources
 mkdir -p ${ZYNLV2}
 mkdir -p ${ZYNVSTRES}
 
+cp -a ${BUNDLEDIR}/64/lib/lv2/ZynAddSubFX.lv2presets ${BUNDLEDIR}/inst/LV2/
+
 zynresources "${ZYNLV2}" "${BUNDLEDIR}/64" "${MRUBYZEST64}"
 zynresources "${ZYNVSTRES}" "${BUNDLEDIR}/64" "${MRUBYZEST64}"
 
