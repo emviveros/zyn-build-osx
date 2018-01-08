@@ -9,6 +9,8 @@
 : ${NOSTACK="true"}
 ## concurrency
 : ${MAKEFLAGS="-j4"}
+# demo or release
+: ${DEMOMODE="release"}
 
 ## actual build location
 : ${BUILDD=$HOME/src/zyn_build_$ARCHITECTURE}
@@ -210,6 +212,7 @@ git clone --single-branch --depth=1 --recursive https://github.com/mruby-zest/mr
 cd mruby-zest-build
 git reset --hard
 git pull
+git submodule update --recursive
 
 ruby ./rebuild-fcache.rb
 
@@ -233,7 +236,7 @@ cp -v ${PREFIX}/lib/libuv.a deps/
 ( cd mruby && \
  CFLAGS="-I${PREFIX}/include ${GLOBAL_CPPFLAGS} ${OSXARCH} ${GLOBAL_CFLAGS}" \
  LDFLAGS="${OSXARCH} ${GLOBAL_LDFLAGS}" \
- OS=Mac MRUBY_CONFIG=../build_config.rb rake )
+ BUILD_MODE=$DEMOMODE OS=Mac MRUBY_CONFIG=../build_config.rb rake clean all)
 
 cd ${BUILDD}/mruby-zest-build
 
@@ -265,6 +268,7 @@ git clone --single-branch --recursive https://github.com/zynaddsubfx/zynaddsubfx
 cd zynaddsubfx
 git reset --hard
 git pull
+git submodule update --recursive
 
 ## when using gcc-7.2 on macosx distro helpers re-define fmin(),fmax(),rint() and round()
 if true; then
@@ -283,7 +287,7 @@ GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Wl,-dead_strip"
 rm -rf build
 mkdir -p build; cd build
 cmake -DCMAKE_INSTALL_PREFIX=/ \
-	-DGuiModule=zest -DDemoMode=release \
+	-DGuiModule=zest -DDemoMode=$DEMOMODE \
 	-DCMAKE_BUILD_TYPE="None" \
 	-DCMAKE_OSX_ARCHITECTURES="$ARCHITECTURE" \
 	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter" \

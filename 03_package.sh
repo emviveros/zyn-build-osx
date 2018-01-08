@@ -1,5 +1,7 @@
 #!/bin/bash
 : ${OUTDIR="/tmp/"}
+: ${PRODUCT_NAME="ZynAddSubFx"}
+: ${ICON_FILE="ZynAddSubFx.icns"}
 
 set -e
 
@@ -9,7 +11,6 @@ test -n $BUNDLEDIR
 test -d ${BUNDLEDIR}/inst
 
 ##############################################################################
-PRODUCT_NAME="ZynAddSubFx"
 cd $HOME/src/zyn_build_x86_64/zynaddsubfx/build
 VERSION=`git describe --tags | sed 's/-g[a-f0-9]*$//'`
 ##############################################################################
@@ -18,7 +19,7 @@ if test -f /Developer/usr/bin/packagemaker ; then
 	echo "calling packagemaker"
 	/Developer/usr/bin/packagemaker -v \
 		--out "${OUTDIR}${PRODUCT_NAME}-${VERSION}.pkg" \
-		--title "ZynAddSubFX Plugins" \
+		--title "${PRODUCT_NAME} Plugins" \
 		--root ${BUNDLEDIR}/inst/ \
 		--install-to /Library/Audio/Plug-Ins/ \
 		--no-relocate --root-volume-only \
@@ -45,7 +46,7 @@ ICNSTMP=`mktemp -t appicon`
 
 trap "rm -rf $MNTPATH $TMPDMG ${TMPDMG}.dmg $ICNSTMP $BUNDLEDIR" EXIT
 
-rm -f $UC_DMG "$TMPDMG" "${TMPDMG}.dmg" "$ICNSTMP ${ICNSTMP}.icns ${ICNSTMP}.rsrc"
+rm -f "$UC_DMG" "$TMPDMG" "${TMPDMG}.dmg" "$ICNSTMP ${ICNSTMP}.icns ${ICNSTMP}.rsrc"
 rm -rf "$MNTPATH"
 mkdir -p "$MNTPATH"
 
@@ -120,7 +121,7 @@ rm -rf "$MNTPATH"
 
 echo "setting file icon ..."
 
-cp ${this_script_dir}/${PRODUCT_NAME}.icns ${ICNSTMP}.icns
+cp ${this_script_dir}/${ICON_FILE} ${ICNSTMP}.icns
 sips -i ${ICNSTMP}.icns
 DeRez -only icns ${ICNSTMP}.icns > ${ICNSTMP}.rsrc
 Rez -append ${ICNSTMP}.rsrc -o "$UC_DMG"

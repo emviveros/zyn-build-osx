@@ -6,6 +6,20 @@
 
 set -e
 
+while [ $# -gt 0 ] ; do
+	case $1 in
+		--demo)
+			export DEMOMODE=demo
+			export PRODUCT_NAME="ZynAddSubFx Demo"
+			shift
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+
+
 # build in $HOME/src/zyn_build_<ARCH>
 # and keep dependencies in in $HOME/src/zyn_stack_<ARCH>
 ARCHITECTURE=x86_64 ./01_compile.sh
