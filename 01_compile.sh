@@ -284,10 +284,16 @@ sed -i '' 's/Window\.cpp/Window.mm/'  src/Plugin/ZynAddSubFX/CMakeLists.txt
 
 GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Wl,-dead_strip"
 
+if "$DEMOMODE" = "release"; then
+	DDEMO = false
+else
+	DDEMO = true
+fi
+
 rm -rf build
 mkdir -p build; cd build
 cmake -DCMAKE_INSTALL_PREFIX=/ \
-	-DGuiModule=zest -DDemoMode=$DEMOMODE \
+	-DGuiModule=zest -DDemoMode=$DDEMO \
 	-DCMAKE_BUILD_TYPE="None" \
 	-DCMAKE_OSX_ARCHITECTURES="$ARCHITECTURE" \
 	-DCMAKE_C_FLAGS="-I${PREFIX}/include $GLOBAL_CFLAGS -Wno-unused-parameter" \
