@@ -285,9 +285,9 @@ sed -i '' 's/Window\.cpp/Window.mm/'  src/Plugin/ZynAddSubFX/CMakeLists.txt
 GLOBAL_LDFLAGS="$GLOBAL_LDFLAGS -Wl,-dead_strip"
 
 if test "$DEMOMODE" = "release"; then
-	DDEMO = false
+	DDEMO=false
 else
-	DDEMO = true
+	DDEMO=true
 fi
 
 rm -rf build
