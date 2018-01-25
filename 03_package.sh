@@ -23,6 +23,7 @@ if test -f /Developer/usr/bin/packagemaker ; then
 		--root ${BUNDLEDIR}/inst/ \
 		--install-to /Library/Audio/Plug-Ins/ \
 		--no-relocate --root-volume-only \
+		--version "$VERSION" \
 		--target 10.5 --domain system --id com.github.zynaddsubfx.pkg
 
 	ls -l "${OUTDIR}${PRODUCT_NAME}-${VERSION}.pkg"
