@@ -11,7 +11,7 @@ cd /tmp/gccbuild/
 
 curl -4 -O http://ftp.gnu.org/gnu/gmp/gmp-6.1.2.tar.bz2
 curl -4 -O http://ftp.gnu.org/gnu/mpc/mpc-1.0.3.tar.gz
-curl -O http://www.mpfr.org/mpfr/mpfr-4.0.0.tar.bz2
+curl -O http://www.mpfr.org/mpfr-4.0.0/mpfr-4.0.0.tar.bz2
 curl -O http://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2
 curl -O ftp://ftp.fu-berlin.de/unix/languages/gcc/releases/gcc-7.2.0/gcc-7.2.0.tar.gz
 
